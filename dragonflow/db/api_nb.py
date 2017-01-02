@@ -306,19 +306,19 @@ class NbApi(object):
                 ovs_port = db_models.OvsPort(value)
                 self.controller.ovs_port_deleted(ovs_port)
         elif db_models.PortPair.table_name == table:
-            if action == ('create', 'set'):
+            if action in ('create', 'set'):
                 pp = db_models.PortPair(value)
                 self.controller.portpair_updated(pp)
             elif action == 'delete':
                 self.controller.portpair_deleted(key)
         elif db_models.PortPairGroup.table_name == table:
-            if action == ('create', 'set'):
+            if action in ('create', 'set'):
                 ppg = db_models.PortPairGroup(value)
                 self.controller.portpairgroup_updated(ppg)
             elif action == 'delete':
                 self.controller.portpairgroup_deleted(key)
         elif db_models.PortChain.table_name == table:
-            if action == ('create', 'set'):
+            if action in ('create', 'set'):
                 pc = db_models.PortChain(value)
                 self.controller.portchain_updated(pc)
             elif action == 'delete':

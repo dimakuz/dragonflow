@@ -586,6 +586,13 @@ class Filter(object):
         raise Exception('Filter not implemented')
 
 
+class RyuIPv4Filter(object):
+    """Use ryu to parse the packet and test if it's IPv4."""
+    def __call__(self, buf):
+        pkt = ryu.lib.packet.packet.Packet(buf)
+        return (pkt.get_protocol(ryu.lib.packet.ipv4.ipv4) is not None)
+
+
 class RyuIPv6Filter(object):
     """Use ryu to parse the packet and test if it's IPv6."""
     def __call__(self, buf):
