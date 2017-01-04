@@ -13,6 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 import collections
+from oslo_log import helpers as log_helpers
 from oslo_log import log
 
 from dragonflow.controller.common import constants
@@ -51,6 +52,7 @@ class FcApp(df_base_app.DFlowApp):
         self._fc_to_pc = {}
         self._port_to_fc = collections.defaultdict(set)
 
+    @log_helpers.log_method_call
     def add_local_port(self, lport):
         lport_id = lport.get_id()
         self._local_ports.add(lport_id)
@@ -69,6 +71,7 @@ class FcApp(df_base_app.DFlowApp):
         elif lport_id == fc.get_dest_port_id():
             self._install_dest_flow_classifier(fc, lport)
 
+    @log_helpers.log_method_call
     def remove_local_port(self, lport):
         lport_id = lport.get_id()
         self._local_ports.remove(lport_id)
@@ -195,6 +198,7 @@ class FcApp(df_base_app.DFlowApp):
     def _get_fc_lport(self, fc):
         return self.db_store.get_port(self._get_fc_lport_id(fc))
 
+    @log_helpers.log_method_call
     def create_portchain(self, pc):
         self._local_pcs[pc.get_id()] = pc
         for fc_id in pc.get_flow_classifier_ids():
@@ -206,6 +210,7 @@ class FcApp(df_base_app.DFlowApp):
 
             self._install_flow_classifier(fc)
 
+    @log_helpers.log_method_call
     def delete_portchain(self, pc):
         for fc_id in pc.get_flow_classifier_ids():
             fc = self.db_store.flowclassifiers.get(fc_id)
@@ -218,6 +223,7 @@ class FcApp(df_base_app.DFlowApp):
 
         self._local_pcs.pop(pc.get_id())
 
+    @log_helpers.log_method_call
     def update_portchain(self, pc):
         old_pc = self._local_pcs[pc.get_id()]
         old_fcs = set(old_pc.get_flow_classifier_ids())
