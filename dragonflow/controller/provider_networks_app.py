@@ -171,7 +171,7 @@ class ProviderNetworksApp(df_base_app.DFlowApp):
         inst = [self.parser.OFPInstructionGotoTable(const.EGRESS_TABLE)]
         self.mod_flow(
             inst=inst,
-            table_id=const.L2_LOOKUP_TABLE,
+            table_id=const.L2_LOOKUP_CONT_TABLE,
             priority=const.PRIORITY_MEDIUM,
             match=match)
 
@@ -200,7 +200,7 @@ class ProviderNetworksApp(df_base_app.DFlowApp):
             inst.insert(0, action_inst)
         self.mod_flow(
             inst=inst,
-            table_id=const.EGRESS_TABLE,
+            table_id=const.EGRESS_CONT_TABLE,
             priority=const.PRIORITY_LOW,
             match=match)
 
@@ -319,7 +319,7 @@ class ProviderNetworksApp(df_base_app.DFlowApp):
     def _remove_l2_lookup_flow(self, network_id):
         match = self._make_bum_match(metadata=network_id)
         self.mod_flow(
-            table_id=const.L2_LOOKUP_TABLE,
+            table_id=const.L2_LOOKUP_CONT_TABLE,
             command=self.ofproto.OFPFC_DELETE,
             priority=const.PRIORITY_MEDIUM,
             match=match)
@@ -328,7 +328,7 @@ class ProviderNetworksApp(df_base_app.DFlowApp):
         match = self.parser.OFPMatch(metadata=network_id)
         self.mod_flow(
             command=self.ofproto.OFPFC_DELETE,
-            table_id=const.EGRESS_TABLE,
+            table_id=const.EGRESS_CONT_TABLE,
             priority=const.PRIORITY_LOW,
             match=match)
 
