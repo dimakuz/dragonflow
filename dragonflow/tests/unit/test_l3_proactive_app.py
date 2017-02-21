@@ -27,8 +27,10 @@ class TestL3ProactiveApp(test_app_base.DFAppTestBase):
     def setUp(self):
         super(TestL3ProactiveApp, self).setUp()
         self.app = self.open_flow_app.dispatcher.apps[0]
-        self.mock_mod_flow = mock.Mock(name='mod_flow')
-        self.app.mod_flow = self.mock_mod_flow
+        mod_flow_patch = mock.patch.object(self.app, 'mod_flow')
+        self.addCleanup(mod_flow_patch.stop)
+        mod_flow_patch.start()
+        self.mock_mod_flow = self.app.mod_flow
         self.router = copy.deepcopy(test_app_base.fake_logic_router1)
 
     def test_add_del_route(self):
