@@ -23,6 +23,7 @@ from ryu.lib.packet import mpls
 from ryu.lib.packet import packet
 from ryu.lib.packet import tcp
 from ryu.lib.packet import udp
+import testscenarios
 
 from dragonflow.tests.common import app_testing_objects
 from dragonflow.tests.fullstack import test_base
@@ -31,7 +32,8 @@ from dragonflow.tests.fullstack import test_objects as objects
 LOG = log.getLogger(__name__)
 
 
-class SfcTestsCommonBase(test_base.DFTestBase):
+class SfcTestsCommonBase(test_base.DFTestBase,
+                         testscenarios.TestWithScenarios):
     def _create_sf_port(self):
         port = self.subnet.create_port([])
         port.update({'device_id': 'device1'})
@@ -219,14 +221,14 @@ class SfcTestsCommonBase(test_base.DFTestBase):
         )
 
     @classmethod
-    def _gen_udp(cls, src_port, dst_port):
+    def _gen_udp(cls, src_port=2222, dst_port=4444):
         return udp.udp(
             src_port=src_port,
             dst_port=dst_port,
         )
 
     @classmethod
-    def _gen_tcp(cls, src_port, dst_port, bits):
+    def _gen_tcp(cls, src_port=2222, dst_port=4444, bits=tcp.TCP_SYN):
         return tcp.tcp(
             src_port=src_port,
             dst_port=dst_port,
@@ -254,18 +256,158 @@ class SfcTestsCommonBase(test_base.DFTestBase):
 
 
 class TestFcApp(SfcTestsCommonBase):
-    def _run_test(self, fc_params, chain_len, initial_packet, final_packet):
+    scenarios = testscenarios.scenarios.multiply_scenarios(
+        [('pkt_ipv4', {'pkt_ipver': 4}),
+         ('pkt_ipv6', {'pkt_ipver': 6})],
+        [('pkt_tcp', {'pkt_proto': 'tcp'}),
+         ('pkt_udp', {'pkt_proto': 'udp'})],
+
+        [('fc_src_lport', {'fc_lport_type': 'src'}),
+         ('fc_dst_lport', {'fc_lport_type': 'dst'})],
+        [('fc_ipv4', {'fc_ipver': 4}),
+         ('fc_ipv6', {'fc_ipver': 6}),
+         ('fc_ipver_none', {'fc_ipver': None})],
+        [('fc_ip_src_in_range', {'fc_ip_src': 'first'}),
+         ('fc_ip_src_not_in_range', {'fc_ip_src': 'second'}),
+         ('fc_ip_src_none', {'fc_ip_src': None})],
+        [('fc_ip_dst_in_range', {'fc_ip_dst': 'first'}),
+         ('fc_ip_dst_not_in_range', {'fc_ip_dst': 'second'}),
+         ('fc_ip_dst_none', {'fc_ip_dst': None})],
+        [('fc_tcp', {'fc_proto': 'TCP'}),
+         ('fc_udp', {'fc_proto': 'UDP'}),
+         ('fc_proto_none', {'fc_proto': None})],
+        [('fc_src_tp_in_range', {'fc_src_tp_range': (2000, 3000)}),
+         ('fc_src_tp_not_in_range', {'fc_src_tp_range': (3000, 4000)}),
+         ('fc_src_tp_none', {'fc_src_tp_range': None})],
+        [('fc_dst_tp_in_range', {'fc_dst_tp_range': (4000, 5000)}),
+         ('fc_dst_tp_not_in_range', {'fc_dst_tp_range': (3000, 4000)}),
+         ('fc_dst_tp_none', {'fc_dst_tp_range': None})],
+    )
+
+    def _extract_ip(self, ips, ver, idx):
+        return [ip for ip in ips if netaddr.IPAddress(ip).version == ver][idx]
+
+    @property
+    def _fc_params(self):
+        params = {}
+        if self.fc_lport_type == 'src':
+            params['logical_source_port'] = self.src_lport.id
+        elif self.fc_lport_type == 'dst':
+            params['logical_destination_port'] = self.dst_lport.id
+
+        if self.fc_ipver is not None:
+            params['ethertype'] = 'IPv{0}'.format(self.fc_ipver)
+
+        if self.fc_ip_src == 'first':
+            params['source_ip_prefix'] = self._extract_ip(
+                self.src_lport.get_ip_list(),
+                self.fc_ipver,
+                0,
+            )
+        elif self.fc_ip_src == 'second':
+            params['source_ip_prefix'] = self._extract_ip(
+                self.src_lport.get_ip_list(),
+                self.fc_ipver,
+                1,
+            )
+
+        if self.fc_ip_dst == 'first':
+            params['destination_ip_prefix'] = self._extract_ip(
+                self.dst_lport.get_ip_list(),
+                self.fc_ipver,
+                0,
+            )
+        elif self.fc_ip_dst == 'second':
+            params['destination_ip_prefix'] = self._extract_ip(
+                self.dst_lport.get_ip_list(),
+                self.fc_ipver,
+                1,
+            )
+
+        if self.fc_proto is not None:
+            params['protocol'] = self.fc_proto
+
+        if self.fc_src_tp_range is not None:
+            params['source_port_range_min'] = self.fc_src_tp_range[0]
+            params['source_port_range_min'] = self.fc_src_tp_range[1]
+
+        if self.fc_dst_tp_range is not None:
+            params['destination_port_range_min'] = self.fc_dst_tp_range[0]
+            params['destination_port_range_min'] = self.fc_dst_tp_range[1]
+
+        return params
+
+    @property
+    def _initial_packet(self):
+        payload = '0' * 64
+
+        if self.pkt_proto == 'TCP':
+            tp = self._gen_tcp()
+            proto = inet.IPPROTO_TCP
+        elif self.pkt_proto == 'UDP':
+            tp = self._gen_udp()
+            proto = inet.IPPROTO_UDP
+
+        if self.pkt_ipver == 4:
+            nw = self._gen_ipv4(proto)
+            ethertype = ether_types.ETH_TYPE_IP
+        else:
+            nw = self._gen_ipv6(proto)
+            ethertype = ether_types.ETH_TYPE_IPV6
+
+        return self._get_bytes(
+            self._gen_ethernet(ethertype=ethertype) / nw / tp / payload
+        )
+
+    @property
+    def _fc_will_classify_packet(self):
+        if self.fc_ipver is not None and self.pkt_proto != self.fc_ipver:
+            return False
+
+        if self.fc_ip_src not in [None, 'first']:
+            return False
+
+        if self.fc_ip_dst not in [None, 'first']:
+            return False
+
+        if self.fc_proto is not None and self.pkt_proto != self.fc_proto:
+            return False
+
+        if self.fc_src_tp_range is not None:
+            min_, max_ = self.fc_src_tp_range
+            if not (min_ <= 2222 <= max_):
+                return False
+
+        if self.fc_dst_tp_range is not None:
+            min_, max_ = self.fc_dst_tp_range
+            if not (min_ <= 4444 <= max_):
+                return False
+
+        return True
+
+    @property
+    def _final_packet(self):
+        packet = self._initial_packet
+
+        if self._fc_will_classify_packet:
+            packet = self._sf_callback(packet)
+
+        return packet
+
+    def test_fc(self):
         fc = self.store(
             objects.FlowClassifierTestObj(self.neutron, self.nb_api),
         )
-        fc.create(fc_params)
-        pc = self._create_pc(fc, [1 for _ in range(chain_len)])
+        fc.create(self._fc_params)
+        pc = self._create_pc(fc, [1])
         dst_key = (self.subnet.subnet_id, self.dst_port.port_id)
         port_policies = {
             dst_key: app_testing_objects.PortPolicy(
                 rules=[
                     app_testing_objects.PortPolicyRule(
-                        app_testing_objects.ExactMatchFilter(final_packet),
+                        app_testing_objects.ExactMatchFilter(
+                            self._final_packet,
+                        ),
                         actions=[app_testing_objects.StopSimulationAction()],
                     ),
                 ],
@@ -279,7 +421,7 @@ class TestFcApp(SfcTestsCommonBase):
                     app_testing_objects.SendAction(
                         self.subnet.subnet_id,
                         self.src_port.port_id,
-                        initial_packet,
+                        self._initial_packet,
                     ),
                 ],
                 port_policies=port_policies,
@@ -291,596 +433,6 @@ class TestFcApp(SfcTestsCommonBase):
 
         if policy.exceptions:
             raise policy.exceptions[0]
-
-    def test_fc_on_source_port(self):
-        self._run_test(
-            fc_params={'logical_source_port': self.src_port.port.port_id},
-            initial_packet=self._get_bytes(
-                self._gen_ethernet() /
-                self._gen_ipv4(proto=inet.IPPROTO_UDP) /
-                self._gen_udp(src_port=2222, dst_port=2222) /
-                ('0' * 64)
-            ),
-            final_packet=self._get_bytes(
-                self._gen_ethernet() /
-                self._gen_ipv4(proto=inet.IPPROTO_UDP) /
-                self._gen_udp(src_port=2222, dst_port=2222) /
-                ('1' * 64)
-            ),
-            chain_len=1,
-        )
-
-    def test_fc_on_dest_port(self):
-        self._run_test(
-            fc_params={'logical_destination_port': self.dst_port.port.port_id},
-            initial_packet=self._get_bytes(
-                self._gen_ethernet() /
-                self._gen_ipv4(proto=inet.IPPROTO_UDP) /
-                self._gen_udp(src_port=2222, dst_port=2222) /
-                ('0' * 64)
-            ),
-            final_packet=self._get_bytes(
-                self._gen_ethernet() /
-                self._gen_ipv4(proto=inet.IPPROTO_UDP) /
-                self._gen_udp(src_port=2222, dst_port=2222) /
-                ('1' * 64)
-            ),
-            chain_len=1,
-        )
-
-    def test_fc_on_ipv4(self):
-        self._run_test(
-            fc_params={
-                'logical_destination_port': self.dst_port.port.port_id,
-                'ethertype': 'IPv4',
-            },
-            initial_packet=self._get_bytes(
-                self._gen_ethernet() /
-                self._gen_ipv4(proto=inet.IPPROTO_UDP) /
-                self._gen_udp(src_port=2222, dst_port=2222) /
-                ('0' * 64)
-            ),
-            final_packet=self._get_bytes(
-                self._gen_ethernet() /
-                self._gen_ipv4(proto=inet.IPPROTO_UDP) /
-                self._gen_udp(src_port=2222, dst_port=2222) /
-                ('1' * 64)
-            ),
-            chain_len=1,
-        )
-
-    def test_fc_on_ipv6(self):
-        self._run_test(
-            fc_params={
-                'logical_destination_port': self.dst_port.port.port_id,
-                'ethertype': 'IPv6',
-            },
-            initial_packet=self._get_bytes(
-                self._gen_ethernet(ethertype=ether_types.ETH_TYPE_IPV6) /
-                self._gen_ipv6(nxt=inet.IPPROTO_UDP) /
-                self._gen_udp(src_port=2222, dst_port=2222) /
-                ('0' * 64)
-            ),
-            final_packet=self._get_bytes(
-                self._gen_ethernet(ethertype=ether_types.ETH_TYPE_IPV6) /
-                self._gen_ipv6(nxt=inet.IPPROTO_UDP) /
-                self._gen_udp(src_port=2222, dst_port=2222) /
-                ('1' * 64)
-            ),
-            chain_len=1,
-        )
-
-    def test_fc_on_ipv4_src_cidr(self):
-        self._run_test(
-            fc_params={
-                'logical_destination_port': self.dst_port.port.port_id,
-                'ethertype': 'IPv4',
-                'source_ip_prefix': str(netaddr.IPNetwork(self.src_ipv4[0])),
-            },
-            initial_packet=self._get_bytes(
-                self._gen_ethernet() /
-                self._gen_ipv4(proto=inet.IPPROTO_UDP) /
-                self._gen_udp(src_port=2222, dst_port=2222) /
-                ('0' * 64)
-            ),
-            final_packet=self._get_bytes(
-                self._gen_ethernet() /
-                self._gen_ipv4(proto=inet.IPPROTO_UDP) /
-                self._gen_udp(src_port=2222, dst_port=2222) /
-                ('1' * 64)
-            ),
-            chain_len=1,
-        )
-
-    def test_fc_on_ipv4_src_cidr_negative(self):
-        self._run_test(
-            fc_params={
-                'logical_destination_port': self.dst_port.port.port_id,
-                'ethertype': 'IPv4',
-                'source_ip_prefix': str(netaddr.IPNetwork(self.src_ipv4[1])),
-            },
-            initial_packet=self._get_bytes(
-                self._gen_ethernet() /
-                self._gen_ipv4(proto=inet.IPPROTO_UDP) /
-                self._gen_udp(src_port=2222, dst_port=2222) /
-                ('0' * 64)
-            ),
-            final_packet=self._get_bytes(
-                self._gen_ethernet() /
-                self._gen_ipv4(proto=inet.IPPROTO_UDP) /
-                self._gen_udp(src_port=2222, dst_port=2222) /
-                ('0' * 64)
-            ),
-            chain_len=1,
-        )
-
-    def test_fc_on_ipv4_dst_cidr(self):
-        self._run_test(
-            fc_params={
-                'logical_destination_port': self.dst_port.port.port_id,
-                'ethertype': 'IPv4',
-                'destination_ip_prefix': str(
-                    netaddr.IPNetwork(self.dst_ipv4[0]),
-                ),
-            },
-            initial_packet=self._get_bytes(
-                self._gen_ethernet() /
-                self._gen_ipv4(proto=inet.IPPROTO_UDP) /
-                self._gen_udp(src_port=2222, dst_port=2222) /
-                ('0' * 64)
-            ),
-            final_packet=self._get_bytes(
-                self._gen_ethernet() /
-                self._gen_ipv4(proto=inet.IPPROTO_UDP) /
-                self._gen_udp(src_port=2222, dst_port=2222) /
-                ('1' * 64)
-            ),
-            chain_len=1,
-        )
-
-    def test_fc_on_ipv4_dst_cidr_negative(self):
-        self._run_test(
-            fc_params={
-                'logical_destination_port': self.dst_port.port.port_id,
-                'ethertype': 'IPv4',
-                'destination_ip_prefix': str(
-                    netaddr.IPNetwork(self.dst_ipv4[1]),
-                ),
-            },
-            initial_packet=self._get_bytes(
-                self._gen_ethernet() /
-                self._gen_ipv4(proto=inet.IPPROTO_UDP) /
-                self._gen_udp(src_port=2222, dst_port=2222) /
-                ('0' * 64)
-            ),
-            final_packet=self._get_bytes(
-                self._gen_ethernet() /
-                self._gen_ipv4(proto=inet.IPPROTO_UDP) /
-                self._gen_udp(src_port=2222, dst_port=2222) /
-                ('0' * 64)
-            ),
-            chain_len=1,
-        )
-
-    def test_fc_on_ipv6_src_cidr(self):
-        self._run_test(
-            fc_params={
-                'logical_destination_port': self.dst_port.port.port_id,
-                'ethertype': 'IPv6',
-                'source_ip_prefix': str(netaddr.IPNetwork(self.src_ipv6[0])),
-            },
-            initial_packet=self._get_bytes(
-                self._gen_ethernet(ethertype=ether_types.ETH_TYPE_IPV6) /
-                self._gen_ipv6(nxt=inet.IPPROTO_UDP) /
-                self._gen_udp(src_port=2222, dst_port=2222) /
-                ('0' * 64)
-            ),
-            final_packet=self._get_bytes(
-                self._gen_ethernet(ethertype=ether_types.ETH_TYPE_IPV6) /
-                self._gen_ipv6(nxt=inet.IPPROTO_UDP) /
-                self._gen_udp(src_port=2222, dst_port=2222) /
-                ('1' * 64)
-            ),
-            chain_len=1,
-        )
-
-    def test_fc_on_ipv6_src_cidr_negative(self):
-        self._run_test(
-            fc_params={
-                'logical_destination_port': self.dst_port.port.port_id,
-                'ethertype': 'IPv6',
-                'source_ip_prefix': str(netaddr.IPNetwork(self.src_ipv6[1])),
-            },
-            initial_packet=self._get_bytes(
-                self._gen_ethernet(ethertype=ether_types.ETH_TYPE_IPV6) /
-                self._gen_ipv6(nxt=inet.IPPROTO_UDP) /
-                self._gen_udp(src_port=2222, dst_port=2222) /
-                ('0' * 64)
-            ),
-            final_packet=self._get_bytes(
-                self._gen_ethernet(ethertype=ether_types.ETH_TYPE_IPV6) /
-                self._gen_ipv6(nxt=inet.IPPROTO_UDP) /
-                self._gen_udp(src_port=2222, dst_port=2222) /
-                ('0' * 64)
-            ),
-            chain_len=1,
-        )
-
-    def test_fc_on_ipv6_dst_cidr(self):
-        self._run_test(
-            fc_params={
-                'logical_destination_port': self.dst_port.port.port_id,
-                'ethertype': 'IPv6',
-                'destination_ip_prefix': str(
-                    netaddr.IPNetwork(self.dst_ipv6[0]),
-                ),
-            },
-            initial_packet=self._get_bytes(
-                self._gen_ethernet(ethertype=ether_types.ETH_TYPE_IPV6) /
-                self._gen_ipv6(nxt=inet.IPPROTO_UDP) /
-                self._gen_udp(src_port=2222, dst_port=2222) /
-                ('0' * 64)
-            ),
-            final_packet=self._get_bytes(
-                self._gen_ethernet(ethertype=ether_types.ETH_TYPE_IPV6) /
-                self._gen_ipv6(nxt=inet.IPPROTO_UDP) /
-                self._gen_udp(src_port=2222, dst_port=2222) /
-                ('1' * 64)
-            ),
-            chain_len=1,
-        )
-
-    def test_fc_on_ipv6_dst_cidr_negative(self):
-        self._run_test(
-            fc_params={
-                'logical_destination_port': self.dst_port.port.port_id,
-                'ethertype': 'IPv6',
-                'destination_ip_prefix': str(
-                    netaddr.IPNetwork(self.dst_ipv6[1]),
-                ),
-            },
-            initial_packet=self._get_bytes(
-                self._gen_ethernet(ethertype=ether_types.ETH_TYPE_IPV6) /
-                self._gen_ipv6(nxt=inet.IPPROTO_UDP) /
-                self._gen_udp(src_port=2222, dst_port=2222) /
-                ('0' * 64)
-            ),
-            final_packet=self._get_bytes(
-                self._gen_ethernet(ethertype=ether_types.ETH_TYPE_IPV6) /
-                self._gen_ipv6(nxt=inet.IPPROTO_UDP) /
-                self._gen_udp(src_port=2222, dst_port=2222) /
-                ('0' * 64)
-            ),
-            chain_len=1,
-        )
-
-    def test_fc_on_ipv4_tcp_norange(self):
-        self._run_test(
-            fc_params={
-                'logical_destination_port': self.dst_port.port.port_id,
-                'ethertype': 'IPv4',
-                'protocol': 'TCP',
-            },
-            initial_packet=self._get_bytes(
-                self._gen_ethernet() /
-                self._gen_ipv4(proto=inet.IPPROTO_TCP) /
-                self._gen_tcp(
-                    src_port=2222,
-                    dst_port=2222,
-                    bits=tcp.TCP_SYN,
-                ) /
-                ('0' * 64)
-            ),
-            final_packet=self._get_bytes(
-                self._gen_ethernet() /
-                self._gen_ipv4(proto=inet.IPPROTO_TCP) /
-                self._gen_tcp(
-                    src_port=2222,
-                    dst_port=2222,
-                    bits=tcp.TCP_SYN,
-                ) /
-                ('1' * 64)
-            ),
-            chain_len=1,
-        )
-
-    def test_fc_on_ipv4_tcp_norange_negative(self):
-        self._run_test(
-            fc_params={
-                'logical_destination_port': self.dst_port.port.port_id,
-                'ethertype': 'IPv4',
-                'protocol': 'TCP',
-            },
-            initial_packet=self._get_bytes(
-                self._gen_ethernet() /
-                self._gen_ipv4(proto=inet.IPPROTO_UDP) /
-                self._gen_udp(src_port=2222, dst_port=2222) /
-                ('0' * 64)
-            ),
-            final_packet=self._get_bytes(
-                self._gen_ethernet() /
-                self._gen_ipv4(proto=inet.IPPROTO_UDP) /
-                self._gen_udp(src_port=2222, dst_port=2222) /
-                ('0' * 64)
-            ),
-            chain_len=1,
-        )
-
-    def test_fc_on_ipv4_udp_norange(self):
-        self._run_test(
-            fc_params={
-                'logical_destination_port': self.dst_port.port.port_id,
-                'ethertype': 'IPv4',
-                'protocol': 'UDP',
-            },
-            initial_packet=self._get_bytes(
-                self._gen_ethernet() /
-                self._gen_ipv4(proto=inet.IPPROTO_UDP) /
-                self._gen_udp(src_port=2222, dst_port=2222) /
-                ('0' * 64)
-            ),
-            final_packet=self._get_bytes(
-                self._gen_ethernet() /
-                self._gen_ipv4(proto=inet.IPPROTO_UDP) /
-                self._gen_udp(src_port=2222, dst_port=2222) /
-                ('1' * 64)
-            ),
-            chain_len=1,
-        )
-
-    def test_fc_on_ipv4_udp_norange_negative(self):
-        self._run_test(
-            fc_params={
-                'logical_destination_port': self.dst_port.port.port_id,
-                'ethertype': 'IPv4',
-                'protocol': 'UDP',
-            },
-            initial_packet=self._get_bytes(
-                self._gen_ethernet() /
-                self._gen_ipv4(proto=inet.IPPROTO_TCP) /
-                self._gen_tcp(
-                    src_port=2222,
-                    dst_port=2222,
-                    bits=tcp.TCP_SYN,
-                ) /
-                ('0' * 64)
-            ),
-            final_packet=self._get_bytes(
-                self._gen_ethernet() /
-                self._gen_ipv4(proto=inet.IPPROTO_TCP) /
-                self._gen_tcp(
-                    src_port=2222,
-                    dst_port=2222,
-                    bits=tcp.TCP_SYN,
-                ) /
-                ('0' * 64)
-            ),
-            chain_len=1,
-        )
-
-    def test_fc_on_ipv4_tcp_src_range(self):
-        self._run_test(
-            fc_params={
-                'logical_destination_port': self.dst_port.port.port_id,
-                'ethertype': 'IPv4',
-                'protocol': 'TCP',
-                'source_port_range_min': 2000,
-                'source_port_range_max': 3000,
-            },
-            initial_packet=self._get_bytes(
-                self._gen_ethernet() /
-                self._gen_ipv4(proto=inet.IPPROTO_TCP) /
-                self._gen_tcp(
-                    src_port=2222,
-                    dst_port=4444,
-                    bits=tcp.TCP_SYN,
-                ) /
-                ('0' * 64)
-            ),
-            final_packet=self._get_bytes(
-                self._gen_ethernet() /
-                self._gen_ipv4(proto=inet.IPPROTO_TCP) /
-                self._gen_tcp(
-                    src_port=2222,
-                    dst_port=4444,
-                    bits=tcp.TCP_SYN,
-                ) /
-                ('1' * 64)
-            ),
-            chain_len=1,
-        )
-
-    def test_fc_on_ipv4_tcp_src_range_negative(self):
-        self._run_test(
-            fc_params={
-                'logical_destination_port': self.dst_port.port.port_id,
-                'ethertype': 'IPv4',
-                'protocol': 'TCP',
-                'source_port_range_min': 1000,
-                'source_port_range_max': 2000,
-            },
-            initial_packet=self._get_bytes(
-                self._gen_ethernet() /
-                self._gen_ipv4(proto=inet.IPPROTO_TCP) /
-                self._gen_tcp(
-                    src_port=2222,
-                    dst_port=4444,
-                    bits=tcp.TCP_SYN,
-                ) /
-                ('0' * 64)
-            ),
-            final_packet=self._get_bytes(
-                self._gen_ethernet() /
-                self._gen_ipv4(proto=inet.IPPROTO_TCP) /
-                self._gen_tcp(
-                    src_port=2222,
-                    dst_port=4444,
-                    bits=tcp.TCP_SYN,
-                ) /
-                ('0' * 64)
-            ),
-            chain_len=1,
-        )
-
-    def test_fc_on_ipv4_udp_src_range(self):
-        self._run_test(
-            fc_params={
-                'logical_destination_port': self.dst_port.port.port_id,
-                'ethertype': 'IPv4',
-                'protocol': 'UDP',
-                'source_port_range_min': 2000,
-                'source_port_range_max': 3000,
-            },
-            initial_packet=self._get_bytes(
-                self._gen_ethernet() /
-                self._gen_ipv4(proto=inet.IPPROTO_UDP) /
-                self._gen_udp(src_port=2222, dst_port=4444) /
-                ('0' * 64)
-            ),
-            final_packet=self._get_bytes(
-                self._gen_ethernet() /
-                self._gen_ipv4(proto=inet.IPPROTO_UDP) /
-                self._gen_udp(src_port=2222, dst_port=4444) /
-                ('1' * 64)
-            ),
-            chain_len=1,
-        )
-
-    def test_fc_on_ipv4_udp_src_range_negative(self):
-        self._run_test(
-            fc_params={
-                'logical_destination_port': self.dst_port.port.port_id,
-                'ethertype': 'IPv4',
-                'protocol': 'UDP',
-                'source_port_range_min': 1000,
-                'source_port_range_max': 2000,
-            },
-            initial_packet=self._get_bytes(
-                self._gen_ethernet() /
-                self._gen_ipv4(proto=inet.IPPROTO_UDP) /
-                self._gen_udp(src_port=2222, dst_port=4444) /
-                ('0' * 64)
-            ),
-            final_packet=self._get_bytes(
-                self._gen_ethernet() /
-                self._gen_ipv4(proto=inet.IPPROTO_UDP) /
-                self._gen_udp(src_port=2222, dst_port=4444) /
-                ('0' * 64)
-            ),
-            chain_len=1,
-        )
-
-    def test_fc_on_ipv4_tcp_dst_range(self):
-        self._run_test(
-            fc_params={
-                'logical_destination_port': self.dst_port.port.port_id,
-                'ethertype': 'IPv4',
-                'protocol': 'TCP',
-                'destination_port_range_min': 4000,
-                'destination_port_range_max': 5000,
-            },
-            initial_packet=self._get_bytes(
-                self._gen_ethernet() /
-                self._gen_ipv4(proto=inet.IPPROTO_TCP) /
-                self._gen_tcp(
-                    src_port=2222,
-                    dst_port=4444,
-                    bits=tcp.TCP_SYN,
-                ) /
-                ('0' * 64)
-            ),
-            final_packet=self._get_bytes(
-                self._gen_ethernet() /
-                self._gen_ipv4(proto=inet.IPPROTO_TCP) /
-                self._gen_tcp(
-                    src_port=2222,
-                    dst_port=4444,
-                    bits=tcp.TCP_SYN,
-                ) /
-                ('1' * 64)
-            ),
-            chain_len=1,
-        )
-
-    def test_fc_on_ipv4_tcp_dst_range_negative(self):
-        self._run_test(
-            fc_params={
-                'logical_destination_port': self.dst_port.port.port_id,
-                'ethertype': 'IPv4',
-                'protocol': 'TCP',
-                'destination_port_range_min': 1000,
-                'destination_port_range_max': 2000,
-            },
-            initial_packet=self._get_bytes(
-                self._gen_ethernet() /
-                self._gen_ipv4(proto=inet.IPPROTO_TCP) /
-                self._gen_tcp(
-                    src_port=2222,
-                    dst_port=4444,
-                    bits=tcp.TCP_SYN,
-                ) /
-                ('0' * 64)
-            ),
-            final_packet=self._get_bytes(
-                self._gen_ethernet() /
-                self._gen_ipv4(proto=inet.IPPROTO_TCP) /
-                self._gen_tcp(
-                    src_port=2222,
-                    dst_port=4444,
-                    bits=tcp.TCP_SYN,
-                ) /
-                ('0' * 64)
-            ),
-            chain_len=1,
-        )
-
-    def test_fc_on_ipv4_udp_dst_range(self):
-        self._run_test(
-            fc_params={
-                'logical_destination_port': self.dst_port.port.port_id,
-                'ethertype': 'IPv4',
-                'protocol': 'UDP',
-                'destination_port_range_min': 4000,
-                'destination_port_range_max': 5000,
-            },
-            initial_packet=self._get_bytes(
-                self._gen_ethernet() /
-                self._gen_ipv4(proto=inet.IPPROTO_UDP) /
-                self._gen_udp(src_port=2222, dst_port=4444) /
-                ('0' * 64)
-            ),
-            final_packet=self._get_bytes(
-                self._gen_ethernet() /
-                self._gen_ipv4(proto=inet.IPPROTO_UDP) /
-                self._gen_udp(src_port=2222, dst_port=4444) /
-                ('1' * 64)
-            ),
-            chain_len=1,
-        )
-
-    def test_fc_on_ipv4_udp_dst_range_negative(self):
-        self._run_test(
-            fc_params={
-                'logical_destination_port': self.dst_port.port.port_id,
-                'ethertype': 'IPv4',
-                'protocol': 'UDP',
-                'destination_port_range_min': 1000,
-                'destination_port_range_max': 2000,
-            },
-            initial_packet=self._get_bytes(
-                self._gen_ethernet() /
-                self._gen_ipv4(proto=inet.IPPROTO_UDP) /
-                self._gen_udp(src_port=2222, dst_port=4444) /
-                ('0' * 64)
-            ),
-            final_packet=self._get_bytes(
-                self._gen_ethernet() /
-                self._gen_ipv4(proto=inet.IPPROTO_UDP) /
-                self._gen_udp(src_port=2222, dst_port=4444) /
-                ('0' * 64)
-            ),
-            chain_len=1,
-        )
 
 
 class TestSfcApp(SfcTestsCommonBase):
