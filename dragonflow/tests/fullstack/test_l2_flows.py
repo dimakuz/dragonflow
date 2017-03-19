@@ -40,6 +40,7 @@ class TestL2FLows(test_base.DFTestBase):
                         return m.group(1)
         return None
 
+<<<<<<< HEAD
     def _get_vm_port(self, ip, mac):
         ports = self.nb_api.get_all_logical_ports()
         for port in ports:
@@ -48,6 +49,8 @@ class TestL2FLows(test_base.DFTestBase):
                     return port
         return None
 
+=======
+>>>>>>> 411f5c7... Migrate lport to NB models
     def test_tunnel_network_flows(self):
         if self._check_tunneling_app_enable() is False:
             return
@@ -79,7 +82,7 @@ class TestL2FLows(test_base.DFTestBase):
             exception=Exception('Metadata id was not found in OpenFlow rules')
         )
         port = utils.wait_until_is_and_return(
-            lambda: self._get_vm_port(ip, mac),
+            lambda: utils.get_vm_port(self.nb_api, ip, mac),
             exception=Exception('No port assigned to VM')
         )
         tunnel_key = port.get_unique_key()
@@ -138,7 +141,7 @@ class TestL2FLows(test_base.DFTestBase):
             exception=Exception('Metadata id was not found in OpenFlow rules')
         )
         port = utils.wait_until_is_and_return(
-            lambda: self._get_vm_port(ip, mac),
+            lambda: utils.get_vm_port(self.nb_api, ip, mac),
             exception=Exception('No port assigned to VM')
         )
         port_key = port.get_unique_key()
@@ -312,7 +315,7 @@ class TestL2FLows(test_base.DFTestBase):
             exception=Exception('Metadata id was not found in OpenFlow rules')
         )
         port = utils.wait_until_is_and_return(
-            lambda: self._get_vm_port(ip, mac),
+            lambda: utils.get_vm_port(self.nb_api, ip, mac),
             exception=Exception('No port assigned to VM')
         )
         port_key = port.get_unique_key()
@@ -506,7 +509,7 @@ class TestL2FLows(test_base.DFTestBase):
             exception=Exception('Metadata id was not found in OpenFlow rules')
         )
         port = utils.wait_until_is_and_return(
-            lambda: self._get_vm_port(ip, mac),
+            lambda: utils.get_vm_port(self.nb_api, ip, mac),
             exception=Exception('No port assigned to VM')
         )
         tunnel_key = port.get_unique_key()
