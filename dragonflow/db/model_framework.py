@@ -20,7 +20,7 @@ from oslo_log import log
 from oslo_serialization import jsonutils
 import six
 
-from dragonflow._i18n import _LE
+from dragonflow._i18n import _, _LE
 from dragonflow.db.models import legacy
 
 LOG = log.getLogger(__name__)
@@ -53,6 +53,14 @@ class _CommonBase(models.Base):
      * Unset field detection
     '''
     def __init__(self, **kwargs):
+        for key in kwargs:
+            if key not in self._field_names:
+                raise TypeError(
+                    _('{0} is not a field of {1}').format(
+                        key,
+                        self.__class__.__name__,
+                    )
+                )
         super(_CommonBase, self).__init__(**kwargs)
         self._set_fields = set(kwargs.keys()).intersection(self._field_names)
 
@@ -76,7 +84,7 @@ class _CommonBase(models.Base):
 
         changed_fields = set()
 
-        for key, _ in other.iterate_over_set_fields():
+        for key, _v in other.iterate_over_set_fields():
             old_value = getattr(self, key)
             new_value = getattr(other, key)
 
@@ -188,7 +196,7 @@ class _CommonBase(models.Base):
     @classmethod
     def dependencies(cls):
         deps = []
-        for _, field in cls.iterate_over_fields():
+        for _n, field in cls.iterate_over_fields():
             if isinstance(field, fields.ListField):
                 types = field.items_types
             else:
