@@ -22,9 +22,10 @@ RULE_ETHERTYPE = ('IPv4', 'IPv6')
 # TODO(lihi): Suppport protocol number as protocol type
 RULE_PROTOCOL = ('icmp', 'tcp', 'udp')
 
+
 @mf.register_model
 @mf.construct_nb_db_model
-class SecurityGroupRule(mf.ModelBase, mixins.BasicEvents):
+class SecurityGroupRule(mf.ModelBase, mixins.Topic, mixins.BasicEvents):
     direction = df_fields.EnumField(RULE_DIRECTION, required=True)
     ethertype = df_fields.EnumField(RULE_ETHERTYPE, required=True)
     port_range_max = fields.IntField()
@@ -42,4 +43,3 @@ class SecurityGroup(mf.ModelBase, mixins.Topic, mixins.Version, mixins.Name,
 
     table_name = "secgroup"
     rules = fields.ListField(SecurityGroupRule)
-    id = fields.StringField()

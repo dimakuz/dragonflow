@@ -73,7 +73,6 @@ class TestSGApp(test_app_base.DFAppTestBase):
 
     def _get_another_security_group(self):
         fake_security_group = secgroups.SecurityGroup(
-            description="",
             name="fake_security_group",
             topic="fake_tenant1",
             version=5,

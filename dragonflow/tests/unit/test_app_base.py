@@ -291,7 +291,6 @@ fake_floatingip1.inner_obj = {
 
 
 fake_security_group = secgroups.SecurityGroup(
-    description="",
     name="fake_security_group",
     topic="fake_tenant1",
     version=5,

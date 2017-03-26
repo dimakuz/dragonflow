@@ -233,6 +233,7 @@ class DfLocalController(object):
             self.sync_finished = False
             LOG.warning(_LW("run_db_poll - suppressing exception"))
             LOG.exception(e)
+            raise
 
     def update_chassis(self, chassis):
         self.db_store2.update(chassis)
