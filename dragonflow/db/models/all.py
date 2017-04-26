@@ -15,4 +15,5 @@ from dragonflow.db.models import l2  # noqa
 from dragonflow.db.models import l3  # noqa
 from dragonflow.db.models import legacy  # noqa
 from dragonflow.db.models import qos  # noqa
+from dragonflow.db.models import taas  # noqa
 from dragonflow.db.models import secgroups  # noqa

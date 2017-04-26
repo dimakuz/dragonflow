@@ -72,6 +72,10 @@ INGRESS_CONNTRACK_TABLE = 105
 INGRESS_SECURITY_GROUP_TABLE = 110
 # Send packets to target local ovs ports.
 INGRESS_DISPATCH_TABLE = 115
+
+# TAAS DUMP TABLE
+TAAS_TABLE = 120
+
 # Table used by aging app.
 CANARY_TABLE = 200
 
