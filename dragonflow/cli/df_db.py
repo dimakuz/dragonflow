@@ -14,6 +14,7 @@ import argparse
 import socket
 
 from oslo_serialization import jsonutils
+import yaml
 
 from dragonflow.cli import utils as cli_utils
 from dragonflow.common import exceptions as df_exceptions
@@ -23,7 +24,7 @@ from dragonflow.db import model_framework
 from dragonflow.db import models
 from dragonflow.db.models import all  # noqa
 
-db_tables = (
+db_tables = sorted(
     list(model_framework.iter_tables()) +
     ['unique_key', 'portstats']
 )
@@ -59,34 +60,15 @@ def print_table(db_driver, table):
                          field_labels=labels)
 
 
-def print_whole_table(db_driver, table):
+def get_whole_table(db_driver, table):
     try:
         keys = db_driver.get_all_keys(table)
     except df_exceptions.DBKeyNotFound:
-        print('Table not found: ' + table)
         return
 
-    if not keys:
-        print('Table is empty: ' + table)
-        return
-
-    raw_values = [db_driver.get_key(table, key) for key in keys]
-    values = [jsonutils.loads(value) for value in raw_values if value]
-    if isinstance(values[0], dict):
-        columns = values[0].keys()
-        labels, formatters = \
-            cli_utils.get_list_table_columns_and_formatters(columns, values)
-        cli_utils.print_list(values, columns, formatters=formatters,
-                             field_labels=labels)
-    elif isinstance(values[0], int):
-        for l, value in enumerate(values):
-            values[l] = {table: value}
-
-        columns = [table]
-        labels, formatters = \
-            cli_utils.get_list_table_columns_and_formatters(columns, values)
-        cli_utils.print_list(values, columns, formatters=formatters,
-                             field_labels=columns)
+    return {
+        key: jsonutils.loads(db_driver.get_key(table, key)) for key in keys
+    }
 
 
 def print_key(db_driver, table, key):
@@ -192,8 +174,12 @@ def add_get_command(subparsers):
 
 def add_dump_command(subparsers):
     def handle(db_driver, args):
+        db = {}
         for table in db_tables:
-            print_whole_table(db_driver, table)
+            table_dump = get_whole_table(db_driver, table)
+            if table_dump:
+                db[table] = table_dump
+        print(yaml.safe_dump(db, default_flow_style=False))
 
     sub_parser = subparsers.add_parser('dump', help="Dump content of all "
                                                     "tables.")
