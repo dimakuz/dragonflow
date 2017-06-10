@@ -26,6 +26,7 @@ from ryu.ofproto import ofproto_v1_3
 from ryu import utils
 
 from dragonflow.controller import dispatcher
+from dragonflow.controller.common import constants
 
 
 LOG = log.getLogger(__name__)
@@ -100,8 +101,9 @@ class RyuDFAdapter(ofp_handler.OFPHandler):
         if not self.first_connect:
             # For reconnecting to the ryu controller, df needs a full sync
             # in case any resource added during the disconnection.
-            self.nb_api.db_change_callback(None, None, 'sync', 'full_sync')
-
+            self.nb_api.db_change_callback(None, None,
+                                           constants.CONTROLLER_REINITIALIZE,
+                                           None)
         self.first_connect = False
 
     def _send_port_desc_stats_request(self, datapath):
