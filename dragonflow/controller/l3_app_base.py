@@ -86,8 +86,17 @@ class L3AppMixin(object):
 
             pkt = packet.Packet(msg.data)
             e_pkt = pkt.get_protocol(ethernet.ethernet)
-            mac = netaddr.EUI(e_pkt.dst)
-            router_port_ip = self.router_port_rarp_cache.get(mac)
+            router_key = msg.match.get('reg5')
+            lrouter = self.db_store.get_one(
+                l3.LogicalRouter(unique_key=router_key),
+                index=l3.LogicalRouter.get_index('unique_key'),
+            )
+            router_port_ip = None
+            for port in lrouter.ports:
+                if port.mac == e_pkt.dst:
+                    router_port_ip = port.network.ip
+                    break
+
             if router_port_ip:
                 icmp_ttl_pkt = icmp_error_generator.generate(
                     icmp.ICMP_TIME_EXCEEDED, icmp.ICMP_TTL_EXPIRED_CODE,
