@@ -184,7 +184,7 @@ function configure_trunk {
 }
 
 function configure_l3 {
-    iniadd /$Q_PLUGIN_CONF_FILE service_providers service_provider L3_ROUTER:Dragonflow:dragonflow.neutron.services.l3_router.service_provider.DfL3ServiceProvider:default
+    iniadd /$Q_PLUGIN_CONF_FILE service_providers service_provider L3_ROUTER_NAT:Dragonflow:dragonflow.neutron.services.l3_router.service_provider.DfL3ServiceProvider:default
 }
 
 function configure_bgp {
