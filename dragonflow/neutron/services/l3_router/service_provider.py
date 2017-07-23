@@ -45,14 +45,12 @@ class DfL3ServiceProvider(base.L3ServiceProvider, mixins.LazyNbApiMixin):
     @log_helpers.log_method_call
     def _router_after_create(self, resource, event, trigger, **kwargs):
         router = kwargs['router']
-        trace('router_after_create', kwargs)
         lrouter = neutron_l3.logical_router_from_neutron_router(router)
         self.nb_api.create(lrouter)
 
     @registry.receives(resources.ROUTER, [events.AFTER_UPDATE])
     @log_helpers.log_method_call
     def _router_after_update(self, resource, event, trigger, **kwargs):
-        trace('router_after_update', kwargs)
         router = kwargs['router']
         lrouter = neutron_l3.logical_router_from_neutron_router(router)
         try:
@@ -64,16 +62,45 @@ class DfL3ServiceProvider(base.L3ServiceProvider, mixins.LazyNbApiMixin):
     @log_helpers.log_method_call
     def _router_after_delete(self, resource, event, trigger, **kwargs):
         trace('router_after_delete', kwargs)
-        router_id = kwargs['router_id']
+        router = kwargs['original']
         try:
-            self.nb_api.delete(l3.LogicalRouter(id=router_id))
+            self.nb_api.delete(
+                l3.LogicalRouter(
+                    id=router['id'],
+                    topic=router['tenant_id'],
+                ),
+            )
         except df_exceptions.DBKeyNotFound:
-            LOG.debug("router %s is not found in DF DB", router_id)
+            LOG.debug("router %s is not found in DF DB", router['id'])
 
     @registry.receives(resources.ROUTER_INTERFACE, [events.AFTER_CREATE])
     @log_helpers.log_method_call
     def _add_router_interface(self, resource, event, trigger, **kwargs):
         trace('router_after_ifadd', kwargs)
+        lrouter = self.nb_api.get(
+            l3.LogicalRouter(
+                id=kwargs['router_id'],  # FIXME (dimak) add topic
+            ),
+        )
+        port = kwargs['port']
+        lport = self.nb_api.get(
+            l2.LogicalPort(
+                id=port['id'],
+                topic=kwargs['tenant_id'],
+            ),
+        )
+        lrouter.add_router_port(
+            l3.LogicalRouterPort(
+                id=lport.id,
+                topic=lport.topic,
+                unique_key=lport.unique_key,
+                lswitch=lport.lswitch.id,
+                mac=lport.mac,
+                network='foo',
+            ),
+        )
+        lrouter.version = router['revision_number']
+        self.nb_api.update(lrouter)
         pass
 
     @registry.receives(resources.ROUTER_INTERFACE, [events.AFTER_DELETE])
