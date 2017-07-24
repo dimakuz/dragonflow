@@ -479,13 +479,11 @@ class DNATApp(df_base_app.DFlowApp):
             # if it is the first floating ip on this node, then
             # install the common goto flow rule.
             parser = self.parser
-            match = parser.OFPMatch(in_port=self.external_ofport)
-            actions = [
-            ]
             self.mod_flow(
                 table_id=const.INGRESS_CLASSIFICATION_DISPATCH_TABLE,
                 priority=const.PRIORITY_DEFAULT,
-                instructions=[
+                match=parser.OFPMatch(in_port=self.external_ofport),
+                inst=[
                     parser.OFPInstructionActions(
                         self.ofproto.OFPIT_APPLY_ACTIONS,
                         [
