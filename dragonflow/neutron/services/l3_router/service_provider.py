@@ -21,6 +21,7 @@ from oslo_log import helpers as log_helpers
 from oslo_log import log as logging
 
 from dragonflow.common import exceptions as df_exceptions
+from dragonflow.db.models import l2
 from dragonflow.db.models import l3
 from dragonflow.neutron.common import constants as df_const
 from dragonflow.neutron.db.models import l3 as neutron_l3
@@ -47,13 +48,15 @@ class DfL3ServiceProvider(base.L3ServiceProvider, mixins.LazyNbApiMixin):
 
     @registry.receives(resources.ROUTER, [events.AFTER_CREATE])
     @log_helpers.log_method_call
-    def _router_after_create(self, resource, event, trigger, router, **kwargs):
+    def _router_after_create(self, resource, event, trigger,
+                             router, **kwargs):
         lrouter = neutron_l3.logical_router_from_neutron_router(router)
         self.nb_api.create(lrouter)
 
     @registry.receives(resources.ROUTER, [events.AFTER_UPDATE])
     @log_helpers.log_method_call
-    def _router_after_update(self, resource, event, trigger, router, **kwargs):
+    def _router_after_update(self, resource, event, trigger,
+                             router, **kwargs):
         lrouter = neutron_l3.logical_router_from_neutron_router(router)
         try:
             self.nb_api.update(lrouter)
@@ -64,21 +67,17 @@ class DfL3ServiceProvider(base.L3ServiceProvider, mixins.LazyNbApiMixin):
     @log_helpers.log_method_call
     def _router_after_delete(self, resource, event, trigger,
                              original, **kwargs):
-        trace('router_after_delete', kwargs)
-        try:
-            self.nb_api.delete(
-                l3.LogicalRouter(
-                    id=router['id'],
-                    topic=router['tenant_id'],
-                ),
-            )
-        except df_exceptions.DBKeyNotFound:
-            LOG.debug("router %s is not found in DF DB", router['id'])
+        self.nb_api.delete(
+            l3.LogicalRouter(
+                id=original['id'],
+                topic=original['tenant_id'],
+            ),
+        )
 
     @registry.receives(resources.ROUTER_INTERFACE, [events.AFTER_CREATE])
     @log_helpers.log_method_call
-    def _add_router_interface(self, context, router_id, port, **kwargs):
-        trace('router_after_ifadd', kwargs)
+    def _add_router_interface(self, resource, event, trigger,
+                              context, router_id, port, cidrs, **kwargs):
         router = self._l3_plugin.get_router(context, router_id)
 
         lrouter = self.nb_api.get(
@@ -100,7 +99,7 @@ class DfL3ServiceProvider(base.L3ServiceProvider, mixins.LazyNbApiMixin):
                 unique_key=lport.unique_key,
                 lswitch=lport.lswitch.id,
                 mac=lport.mac,
-                network='foo',
+                network=cidrs[0],
             ),
         )
         lrouter.version = router['revision_number']
@@ -108,7 +107,8 @@ class DfL3ServiceProvider(base.L3ServiceProvider, mixins.LazyNbApiMixin):
 
     @registry.receives(resources.ROUTER_INTERFACE, [events.AFTER_DELETE])
     @log_helpers.log_method_call
-    def _remove_router_interface(self, context, router_id, port, **kwargs):
+    def _remove_router_interface(self, resource, event, trigger,
+                                 context, router_id, port, **kwargs):
         router = self._l3_plugin.get_router(context, router_id)
         lrouter = self.nb_api.get(
             l3.LogicalRouter(
@@ -116,18 +116,20 @@ class DfL3ServiceProvider(base.L3ServiceProvider, mixins.LazyNbApiMixin):
                 topic=router['tenant_id'],
             ),
         )
-        lrouter.remove_route_port(port['id'])
+        lrouter.remove_router_port(port['id'])
         lrouter.version = router['revision_number']
         self.nb_api.update(lrouter)
 
     @registry.receives(resources.FLOATING_IP, [events.AFTER_CREATE])
     @log_helpers.log_method_call
     def _create_floatingip(self, resource, event, trigger, **kwargs):
+        trace('fip_create', kwargs)
         pass
 
     @registry.receives(resources.FLOATING_IP, [events.AFTER_UPDATE])
     @log_helpers.log_method_call
     def _update_floatingip(self, resource, event, trigger, **kwargs):
+        trace('fip_update', kwargs)
         fip = kwargs['floating_ip']
         self.nb_api.update(
             l3.FloatingIp(
@@ -144,6 +146,7 @@ class DfL3ServiceProvider(base.L3ServiceProvider, mixins.LazyNbApiMixin):
     @registry.receives(resources.FLOATING_IP, [events.AFTER_DELETE])
     @log_helpers.log_method_call
     def _delete_floatingip(self, resource, event, trigger, **kwargs):
+        trace('fip_delete', kwargs)
         self.nb_api.delete(
             l3.FloatingIp(
                 id=kwargs['id'],
