@@ -346,9 +346,7 @@ class DfLocalController(object):
 
     def _port_created(self, lport):
         # FIXME (dimak) move to apps
-        if lport.is_local:
-            lport.emit_bind_local()
-        elif lport.is_remote:
+        if lport.is_remote:
             lport.emit_bind_remote()
 
     def _port_updated(self, lport, orig_lport):

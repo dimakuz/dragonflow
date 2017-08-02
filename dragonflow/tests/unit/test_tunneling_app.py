@@ -51,6 +51,7 @@ class TestTunnelingApp(test_app_base.DFAppTestBase):
                 self.app.parser.OFPInstructionGotoTable(
             const.INGRESS_DESTINATION_PORT_LOOKUP_TABLE)]
         self.controller.update(fake_local_gre_port1)
+        fake_local_gre_port1.emit_bind_local()
         self.app.mod_flow.assert_called_with(
             inst=inst,
             table_id=const.INGRESS_CLASSIFICATION_DISPATCH_TABLE,
@@ -63,6 +64,7 @@ class TestTunnelingApp(test_app_base.DFAppTestBase):
                 macs=['1a:0b:0c:0d:0e:0f'],
                 ips=['10.0.0.12'])
         self.controller.update(fake_local_gre_port2)
+        fake_local_gre_port2.emit_bind_local()
         self.app.mod_flow.assert_not_called()
         self.app.mod_flow.reset_mock()
 

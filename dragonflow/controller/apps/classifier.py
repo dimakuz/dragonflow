@@ -50,13 +50,15 @@ class ClassifierApp(df_base_app.DFlowApp):
             self._ovs_port_deleted(ovs_port)
         if not ofport or ofport == -1:
             return  # Not ready yet, or error
-        lport = self.nb_api.get(l2.LogicalPort(id=lport_id))
-        self._ofport_unique_key_map[ovs_port.id] = (ofport, lport.unique_key)
+        lport = self.db_store.get(l2.LogicalPort(id=lport_id))
+        self._ofport_unique_key_map[ovs_port.id] = (
+            ofport, lport.unique_key, lport.id)
         LOG.info("Add local ovs port %(ovs_port)s, logical port "
                  "%(lport)s for classification",
                  {'ovs_port': ofport, 'lport': lport})
         self._make_ingress_classification_flow(lport, ofport)
         self._make_ingress_dispatch_flow(lport, ofport)
+        lport.emit_bind_local()
 
     def _make_ingress_dispatch_flow(self, lport,
                                     ofport):
@@ -102,11 +104,15 @@ class ClassifierApp(df_base_app.DFlowApp):
     @df_base_app.register_event(ovs.OvsPort, model_constants.EVENT_DELETED)
     def _ovs_port_deleted(self, ovs_port):
         try:
-            ofport, port_key = self._ofport_unique_key_map.pop(ovs_port.id)
+            ofport, port_key, port_id = self._ofport_unique_key_map.pop(
+                ovs_port.id)
         except KeyError:
             # OvsPort not present in lookup, was either not added, or removed
             # by a previous update. In both cases irrelevant.
             return
+        lport = self.db_store.get_one(l2.LogicalPort(id=port_id))
+        if lport is not None:
+            lport.emit_unbind_local()
         self._del_ingress_dispatch_flow(port_key)
         self._del_ingress_classification_flow(ofport)
 
