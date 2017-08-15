@@ -200,7 +200,7 @@ class DNATApp(df_base_app.DFlowApp):
     def _get_arp_responder(self, floatingip):
         # ARP responder is placed in L2. This is needed to avoid the multicast
         # flow for provider network in L2 table.
-        # The packet is egressed to EGRESS_TABLE so it can reach the provide
+        # The packet is egressed to EGRESS_TABLE so it can reach the provider
         # network.
         return arp_responder.ArpResponder(
             app=self,
