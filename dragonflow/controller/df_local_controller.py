@@ -32,7 +32,6 @@ from dragonflow.db import api_nb
 from dragonflow.db import db_common
 from dragonflow.db import db_store
 from dragonflow.db import model_framework
-from dragonflow.db import model_proxy
 from dragonflow.db.models import core
 from dragonflow.db.models import l2
 from dragonflow.db.models import mixins
@@ -86,18 +85,6 @@ class DfLocalController(object):
 
         self.sync_rate_limiter = df_utils.RateLimiter(
                 max_rate=1, time_unit=db_common.DB_SYNC_MINIMUM_INTERVAL)
-
-        l2.LogicalPort.register_created(self._port_created)
-        l2.LogicalPort.register_updated(self._port_updated)
-        l2.LogicalPort.register_deleted(self._port_deleted)
-
-        self._local_ports = set()
-        l2.LogicalPort.register_bind_local(self._port_bound_local)
-        l2.LogicalPort.register_unbind_local(self._port_unbound_local)
-
-        self._remote_ports = set()
-        l2.LogicalPort.register_bind_remote(self._port_bound_remote)
-        l2.LogicalPort.register_unbind_remote(self._port_unbound_remote)
 
     def run(self):
         self.vswitch_api.initialize(self.nb_api)
@@ -187,25 +174,6 @@ class DfLocalController(object):
         for port in self._get_ports_by_chassis(chassis):
             self.delete(port)
         self.db_store.delete(chassis)
-
-    def _is_physical_chassis(self, chassis):
-        if not chassis:
-            return False
-        if model_proxy.is_model_proxy(chassis) and not chassis.get_object():
-            return False
-        return True
-
-    def update_lport(self, lport):
-        if (
-            lport.binding is None or
-            (lport.binding.type == l2.BINDING_CHASSIS and
-             not self._is_physical_chassis(lport.binding.chassis))
-        ):
-            LOG.debug(("Port %s has not been bound or it is a vPort"),
-                      lport.id)
-            return
-
-        self.update_model_object(lport)
 
     def register_chassis(self):
         # Get all chassis from nb db to db store.
@@ -301,12 +269,6 @@ class DfLocalController(object):
         method_name = 'delete_{0}'.format(table)
         return getattr(self, method_name, self.delete_model_object)
 
-    def update_child_port_segmentation(self, obj):
-        self.update_model_object(obj)
-        child = obj.port.get_object()
-        if child:
-            self.update(child)
-
     def update(self, obj):
         handler = getattr(
             self,
@@ -335,7 +297,6 @@ class DfLocalController(object):
     def _handle_db_change(self, update):
         action = update.action
         if action == ctrl_const.CONTROLLER_REINITIALIZE:
-            self._reset_ports()
             self.db_store.clear()
             self.vswitch_api.initialize(self.nb_api)
             self.sync()
@@ -363,41 +324,6 @@ class DfLocalController(object):
                     self.update(obj)
         else:
             LOG.warning('Unfamiliar update: %s', str(update))
-
-    def _reset_ports(self):
-        self._local_ports.clear()
-        self._remote_ports.clear()
-
-    def _port_created(self, lport):
-        # FIXME (dimak) move to apps
-        if lport.is_local:
-            lport.emit_bind_local()
-        elif lport.is_remote:
-            lport.emit_bind_remote()
-
-    def _port_updated(self, lport, orig_lport):
-        if lport.id in self._local_ports:
-            lport.emit_local_updated(orig_lport)
-        elif lport.id in self._remote_ports:
-            lport.emit_remote_updated(orig_lport)
-
-    def _port_deleted(self, lport):
-        if lport.id in self._local_ports:
-            lport.emit_unbind_local()
-        elif lport.id in self._remote_ports:
-            lport.emit_unbind_remote()
-
-    def _port_bound_local(self, lport):
-        self._local_ports.add(lport.id)
-
-    def _port_unbound_local(self, lport):
-        self._local_ports.remove(lport.id)
-
-    def _port_bound_remote(self, lport):
-        self._remote_ports.add(lport.id)
-
-    def _port_unbound_remote(self, lport):
-        self._remote_ports.remove(lport.id)
 
 
 def _has_basic_events(obj):

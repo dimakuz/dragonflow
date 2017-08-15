@@ -16,6 +16,7 @@
 import mock
 
 from dragonflow.controller.common import constants
+from dragonflow.controller import port_locator
 from dragonflow.db import db_store
 from dragonflow.db.models import l2
 from dragonflow.db.models import trunk
@@ -45,7 +46,7 @@ class TestTrunkApp(test_app_base.DFAppTestBase):
 
     def setUp(self):
         super(TestTrunkApp, self).setUp()
-        self.app = self.open_flow_app.dispatcher.apps[0]
+        self.app = self.open_flow_app.dispatcher.apps['trunk']
         self.mock_mod_flow = self.app.mod_flow
         self.db_store = db_store.get_instance()
         self.app.ofproto.OFPVID_PRESENT = 0x1000
@@ -74,7 +75,8 @@ class TestTrunkApp(test_app_base.DFAppTestBase):
                               enabled=True,
                               lswitch='lswitch2',
                               topic='fake_tenant1',
-                              unique_key=33)
+                              unique_key=33,
+                              version=2)
 
     def _create_segmentation(self):
         return trunk.ChildPortSegmentation(id='cps1',
@@ -116,6 +118,7 @@ class TestTrunkApp(test_app_base.DFAppTestBase):
         self.db_store.update(lport)
         segmentation = self._create_segmentation()
         self.db_store.update(segmentation)
+        port_locator.set_port_binding(lport, object())
 
         self.controller.delete_by_id(type(segmentation), segmentation.id)
 

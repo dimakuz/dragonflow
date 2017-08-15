@@ -68,7 +68,7 @@ class TestDNATApp(test_app_base.DFAppTestBase):
 
     def setUp(self):
         super(TestDNATApp, self).setUp(enable_selective_topo_dist=True)
-        self.dnat_app = self.open_flow_app.dispatcher.apps[0]
+        self.dnat_app = self.open_flow_app.dispatcher.apps['dnat']
         self.dnat_app.external_ofport = 99
         self.dnat_app._install_local_floatingip = mock.Mock()
         self.dnat_app._uninstall_local_floatingip = mock.Mock()
