@@ -190,6 +190,23 @@ def add_get_command(subparsers):
     sub_parser.set_defaults(handle=handle)
 
 
+def add_set_command(subparsers):
+    def handle(db_driver, args):
+        table = args.table
+        key = args.key
+        value = args.value
+        topic = args.topic
+        db_driver.set_key(table, key, value, topic)
+
+    sub_parser = subparsers.add_parser('set', help="Print value for specific "
+                                                   "key.")
+    sub_parser.add_argument('table', help='The name of the table.')
+    sub_parser.add_argument('key', help='The key of the resource.')
+    sub_parser.add_argument('topic', help='The topic of the resource.')
+    sub_parser.add_argument('value', help='The value of the resource.')
+    sub_parser.set_defaults(handle=handle)
+
+
 def add_dump_command(subparsers):
     def handle(db_driver, args):
         for table in db_tables:
@@ -261,6 +278,7 @@ def main():
     add_ls_command(subparsers)
     add_dump_command(subparsers)
     add_get_command(subparsers)
+    add_set_command(subparsers)
     add_bind_command(subparsers)
     add_clean_command(subparsers)
     add_rm_command(subparsers)
